@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  * http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -15,6 +15,12 @@
  */
 package com.ibmcloud.contest.phonebook;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 import javax.naming.InitialContext;
@@ -24,11 +30,13 @@ import javax.persistence.criteria.CriteriaBuilder;
 import javax.persistence.criteria.CriteriaQuery;
 import javax.persistence.criteria.Predicate;
 import javax.persistence.criteria.Root;
+import javax.servlet.http.HttpServletRequest;
 import javax.transaction.Status;
 import javax.transaction.UserTransaction;
 import javax.ws.rs.Consumes;
 import javax.ws.rs.DELETE;
 import javax.ws.rs.GET;
+import javax.ws.rs.OPTIONS;
 import javax.ws.rs.POST;
 import javax.ws.rs.PUT;
 import javax.ws.rs.Path;
@@ -36,6 +44,7 @@ import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.QueryParam;
 import javax.ws.rs.WebApplicationException;
+import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 
@@ -54,13 +63,48 @@ public class PhonebookServiceHandler {
         em = getEm();
     }
 
+    // Maintain Jax-Rs 1.0 client compatibility
+    // Re-route OPTIONS to GET /?_wadl
+    // Because Jax-Rs 2.0 client produces WADL in a different way
+    @OPTIONS
+    @Produces(MediaType.APPLICATION_XML)
+    public String displayWADL(@Context final HttpServletRequest req) {
+
+        final StringBuilder resp = new StringBuilder();
+        try {
+            final URL url = new URL(req.getRequestURL() + "?_wadl"); //$NON-NLS-1$
+            final HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setRequestMethod("GET"); //$NON-NLS-1$
+
+            if (conn.getResponseCode() != 200) {
+                throw new WebApplicationException();
+            }
+
+            final BufferedReader br = new BufferedReader(new InputStreamReader((conn.getInputStream())));
+            String output;
+            while (br.ready() && (output = br.readLine()) != null) {
+                resp.append(output);
+            }
+            conn.disconnect();
+
+        } catch (final MalformedURLException e) {
+            e.printStackTrace();
+            throw new WebApplicationException();
+        } catch (final IOException e) {
+            e.printStackTrace();
+            throw new WebApplicationException();
+        }
+
+        return resp.toString();
+    }
+
     @GET
     @Produces(MediaType.APPLICATION_JSON)
     public PhonebookEntries queryPhonebook(@QueryParam("title") final String title,
             @QueryParam("firstname") final String firstname, @QueryParam("lastname") final String lastname) {
 
-        final List<PhonebookEntry> checkList = em.createQuery(
-                "SELECT t FROM PhonebookEntry t", PhonebookEntry.class) //$NON-NLS-1$
+        final List<PhonebookEntry> checkList = em
+                .createQuery("SELECT t FROM PhonebookEntry t", PhonebookEntry.class) //$NON-NLS-1$
                 .getResultList();
         if (checkList.size() == 0) {
             createSampleData();
